@@ -1,43 +1,21 @@
-from pm4py.objects.log.util import log
-import os
-import pandas as pd
 from scipy.spatial import distance
 import string
-from pm4py.objects.log.importer.xes import importer as xes_importer
 from pm4py.statistics.traces.log import case_statistics
 from pm4py.statistics.variants.log import get
 from hybrid_trace_clustering.clustering_algo import dbscan_algo as dbscan_clustering
 from hybrid_trace_clustering.clustering_algo import kmeans_algo as kmeans_clustering
 from hybrid_trace_clustering.util.evaluation import cluster_evaluation
-from hybrid_trace_clustering.util.util import unique_activities
 from hybrid_trace_clustering.distance_calculation.dist_calc import bag_of_activities, levenshtein
-from pm4py.visualization.petrinet import visualizer as pn_visualizer
-from pm4py.objects.log.exporter.xes import exporter as xes_exporter
 from pm4py.objects.log.log import EventLog as EvenLogClass
-from pm4py.algo.discovery.heuristics import algorithm as heuristics_miner
-from pm4py.evaluation.replay_fitness import evaluator as replay_fitness_evaluator
-from pm4py.evaluation.precision import evaluator as precision_evaluator
-from pm4py.algo.discovery.inductive import algorithm as inductive_miner
-import random
 
-df = pd.read_csv('results.csv', index_col=0)
-TSL = xes_importer.apply("Data/ActiTrac/TSL.anon.xes")
-
-# p10_1000 = xes_importer.apply("generated logs/p15_1000.xes.gz")
-# log = xes_importer.apply("generated logs/p5_1000.xes.gz")
-
-log = TSL
-LOG = 'TSL'
-DISCOVERY_TECHNIQUE = 'inductive miner'
-CLUSTERING_TECHNIQUE = 'K-means'
-NUMBER_OF_CLUSTERS = 4
-MAX_DISTANCE = 2
-EVALUATION = 'alignment'
-DISTANCE_METRIC = 'levenshtein'
-F1_SCORE_THRESHOLD = 0.95
-MINIMUM_CLUSTER_SIZE = 300
-NEIGHBORHOOD_SIZE = 10
-META = ''
+DEFAULT_DISCOVERY_TECHNIQUE = 'inductive miner'
+DEFAULT_CLUSTERING_TECHNIQUE = 'K-means'
+DEFAULT_NUMBER_OF_CLUSTERS = 4
+DEFAULT_MAX_DISTANCE = 2
+DEFAULT_DISTANCE_TECHNIQUE = 'levenshtein'
+DEFAULT_F1_SCORE_THRESHOLD = 0.95
+DEFAULT_MINIMUM_CLUSTER_SIZE = 300
+DEFAULT_NEIGHBORHOOD_SIZE = 10
 
 
 class EventLog(EvenLogClass):
@@ -48,9 +26,53 @@ class EventLog(EvenLogClass):
         self._list.remove(x)
 
 
-def hybrid(event_log, initial_f1_score, number_of_clusters, minimum_cluster_size,
-           neighbourhood_size, distance_technique, clustering_technique, discovery_technique, max_distance):
-    i = 0
+def apply(event_log,
+          initial_f1_score=DEFAULT_F1_SCORE_THRESHOLD,
+          number_of_clusters=DEFAULT_NUMBER_OF_CLUSTERS,
+          minimum_cluster_size=DEFAULT_MINIMUM_CLUSTER_SIZE,
+          neighbourhood_size=DEFAULT_NEIGHBORHOOD_SIZE,
+          distance_technique=DEFAULT_DISTANCE_TECHNIQUE,
+          clustering_technique=DEFAULT_CLUSTERING_TECHNIQUE,
+          discovery_technique=DEFAULT_DISCOVERY_TECHNIQUE,
+          max_distance=DEFAULT_MAX_DISTANCE):
+    """
+    Apply hybrid trace clustering algorithm on an event log
+
+    Parameters
+    ----------
+    event_log
+        Original event log
+
+    initial_f1_score
+        F1-score threshold that qualifies high quality clusters in the first step
+
+    number_of_clusters
+        Number of clusters to be found
+
+    minimum_cluster_size
+        Minimum size of a cluster
+
+    neighbourhood_size
+        Number of neighbour trace variants to be selected when building a new cluster
+
+    distance_technique
+        The technique that calculates the distance between traces. Should be either 'BOA' or 'levenshtein'
+
+    clustering_technique
+        Clustering technique to be used in the first step. Should be either 'K-means' or 'DBSCAN'
+
+    discovery_technique
+        Process model discovery algorithm used in the algorithm. Should be either 'inductive miner' or 'heuristic miner'
+
+    max_distance
+        The maximum distance two trace can have in order to be clustered together
+
+    Returns
+    -------
+    A list of event log clusters
+
+    """
+
     finalized_clusters = []
     remaining_logs = EventLog()
     filtered_log = EventLog()
@@ -62,6 +84,7 @@ def hybrid(event_log, initial_f1_score, number_of_clusters, minimum_cluster_size
     if clustering_technique == 'K-means':
         clusters = kmeans_clustering.apply(event_log, number_of_clusters)
 
+    i = 0
     flag_list = list(string.ascii_letters)[0:len(clusters)]
 
     print(f'number of clusters: {len(clusters)} \nsize of clusters: {[len(x) for x in clusters]}')
@@ -126,6 +149,7 @@ def hybrid(event_log, initial_f1_score, number_of_clusters, minimum_cluster_size
 
 # ***********************************************************
 def new_cluster(log, neighbourhood_size, minimum_cluster_size, distance_technique, discovery_technique, max_distance):
+
     print('***********New cluster initialization starts!*********\n')
     iteration = 0
     f1_score = 0
@@ -142,7 +166,7 @@ def new_cluster(log, neighbourhood_size, minimum_cluster_size, distance_techniqu
         frequent_flag = variant_list[frequent][0].flag
         print(f'The most frequent variant is: {frequent} with flag: {frequent_flag}')
 
-        """ Building a cluster using KNN
+        """ Building a cluster using KNN (optional)
 
         neighbour_variants = find_nearest_neighbours(log, frequent, variants_count_list,
                                                      variant_list, neighbourhood_size)
@@ -316,166 +340,3 @@ def trace_distribution(cluster, log, minimum_cluster_size, discovery_technique, 
                     # continue
 
     print(f'length of cluster: {len(cluster)}, log: {len(log)}')
-
-# ***********************************************************
-
-def token_based_final_cluster_evaluation(clusters, discovery):
-    f1_scores = {}
-    weighted_sum_f1 = 0
-    weighted_sum_fitness = 0
-    weighted_sum_precision = 0
-    lenghts = 0
-    for index, cluster in enumerate(clusters):
-        if discovery == 'inductive miner':
-            net, im, fm = inductive_miner.apply(cluster)
-        if discovery == 'heuristic miner':
-            net, im, fm = heuristics_miner.apply(cluster, parameters={"dependency_thresh": 0.99})
-        fitness = replay_fitness_evaluator.apply(cluster, net, im, fm,
-                                                 variant=replay_fitness_evaluator.Variants.TOKEN_BASED)
-        precision = precision_evaluator.apply(cluster, net, im, fm,
-                                              variant=precision_evaluator.Variants.ETCONFORMANCE_TOKEN)
-        f1_score = 2 * (fitness["log_fitness"] * precision) / (fitness["log_fitness"] + precision)
-        f1_scores['cluster ' + str(len(cluster))] = f1_score
-
-        weighted_sum_f1 += len(cluster) * f1_score
-        weighted_sum_fitness += len(cluster) * fitness["log_fitness"]
-        weighted_sum_precision += len(cluster) * precision
-        lenghts += len(cluster)
-
-    weighted_average_fitness = weighted_sum_fitness / lenghts
-    weighted_average_precision = weighted_sum_precision / lenghts
-    weighted_average_f1 = weighted_sum_f1 / lenghts
-
-    return weighted_average_f1, weighted_average_fitness, weighted_average_precision, f1_scores
-
-
-# ***********************************************************
-def alignment_based_final_cluster_evaluation(clusters):
-    f1_scores = {}
-    weighted_sum_f1 = 0
-    weighted_sum_fitness = 0
-    weighted_sum_precision = 0
-    cluster_lenghts = []
-    lenghts = 0
-    for index, cluster in enumerate(clusters):
-        net, im, fm = inductive_miner.apply(cluster)
-        fitness = replay_fitness_evaluator.apply(cluster, net, im, fm,
-                                                 variant=replay_fitness_evaluator.Variants.ALIGNMENT_BASED)
-        precision = precision_evaluator.apply(cluster, net, im, fm,
-                                              variant=precision_evaluator.Variants.ALIGN_ETCONFORMANCE)
-        f1_score = 2 * (fitness["averageFitness"] * precision) / (fitness["averageFitness"] + precision)
-        f1_scores['cluster ' + str(len(cluster))] = f1_score
-        cluster_lenghts.append(len(cluster))
-
-        weighted_sum_f1 += len(cluster) * f1_score
-        weighted_sum_fitness += len(cluster) * fitness["averageFitness"]
-        weighted_sum_precision += len(cluster) * precision
-        lenghts += len(cluster)
-
-    if len(cluster_lenghts) < 4:
-        cluster_lenghts.append(0)
-    if len(cluster_lenghts) < 5:
-        cluster_lenghts.append(0)
-
-    weighted_average_fitness = weighted_sum_fitness / lenghts
-    weighted_average_precision = weighted_sum_precision / lenghts
-    weighted_average_f1 = weighted_sum_f1 / lenghts
-
-    return weighted_average_f1, weighted_average_fitness, weighted_average_precision, f1_scores, cluster_lenghts
-
-# ***********************************************************
-
-
-def normal_clustering(log):
-    dbscan_parameters = {"dbscan_eps": 0.75, "min_samples": 50}
-    clusters = dbscan_clustering.apply(log, dbscan_parameters)
-    # clusters = kmeans_clustering.apply(log, 4)
-
-    print(f'number of clusters: {len(clusters)} \nsize of clusters: {[len(x) for x in clusters]}')
-    i = 0
-
-    for sublog in clusters:
-        i = i + 1
-        net, im, fm = heuristics_miner.apply(sublog, parameters={"dependency_thresh": 0.99})
-        fitness = replay_fitness_evaluator.apply(sublog, net, im, fm,
-                                                 variant=replay_fitness_evaluator.Variants.TOKEN_BASED)
-        # fitness2 = replay_fitness_evaluator.apply(sublog, net, im, fm, variant=replay_fitness_evaluator.Variants.ALIGNMENT_BASED)
-        precision = precision_evaluator.apply(sublog, net, im, fm,
-                                              variant=precision_evaluator.Variants.ETCONFORMANCE_TOKEN)
-        f1_score = 2 * (fitness["log_fitness"] * precision) / (fitness["log_fitness"] + precision)
-        print(f'******** Cluster {i} with size {len(sublog)} ********')
-        print(f'Token-based Fitness is: {fitness}')
-        # print(f'Alignment-based Fitness is: {fitness2}')
-        print(f'Token-based precision is: {precision}')
-        print(f'F1-score is: {f1_score}')
-
-    return clusters
-
-# ***********************************************************
-
-
-clustering = hybrid(log,
-                    F1_SCORE_THRESHOLD,
-                    NUMBER_OF_CLUSTERS,
-                    MINIMUM_CLUSTER_SIZE,
-                    NEIGHBORHOOD_SIZE,
-                    DISTANCE_METRIC,
-                    CLUSTERING_TECHNIQUE,
-                    DISCOVERY_TECHNIQUE,
-                    MAX_DISTANCE)
-
-
-if EVALUATION == 'alignment':
-    print("Alignment-based Evaluation")
-    align_evaluation = alignment_based_final_cluster_evaluation(clustering)
-if EVALUATION == 'token':
-    token_evaluation = token_based_final_cluster_evaluation(clustering, DISCOVERY_TECHNIQUE)
-
-data = {'log': [LOG],
-        'number_of_clusters': [NUMBER_OF_CLUSTERS],
-        'clustering_technique': [CLUSTERING_TECHNIQUE],
-        'discovery_algo': [DISCOVERY_TECHNIQUE],
-        'runtime': [''],
-        'number_of_traces': [len(log)],
-        'number_of_variants': [len(get.get_variants(log))],
-        'number_of_activities': [len(unique_activities(log))],
-        'distance_metric': [DISTANCE_METRIC],
-        'f1_score_threshold': [F1_SCORE_THRESHOLD],
-        'minimum_cluster_size': [MINIMUM_CLUSTER_SIZE],
-        'neighbourhood_size': [NEIGHBORHOOD_SIZE],
-        'meta': [META],
-        'flag_condition': ['yes'],
-        'max_distance': [MAX_DISTANCE],
-        'clusters': [align_evaluation[3]],
-        'cluster_1': [align_evaluation[4][0]],
-        'cluster_2': [align_evaluation[4][1]],
-        'cluster_3': [align_evaluation[4][2]],
-        'cluster_4': [align_evaluation[4][3]],
-        'cluster_5': [align_evaluation[4][4]],
-        'align_weighted_average_f1': [align_evaluation[0]],
-        'align_weighted_average_fitness': [align_evaluation[1]],
-        'align_weighted_average_precision': [align_evaluation[2]],
-        'token_weighted_average_f1': [''],  # token_evaluation[0]],
-        'token_weighted_average_fitness': [''],  # token_evaluation[1]],
-        'token_weighted_average_precision': ['']  # token_evaluation[2]],
-        }
-
-df_new = pd.DataFrame(data, columns=[key for key in data.keys()])
-
-df = df.append(df_new, ignore_index=True)
-
-df.to_csv('results.csv', header=True)
-
-"""
-variant = xes_exporter.Variants.ETREE
-parameters = {variant.value.Parameters.COMPRESS: True}
-for index, cluster in enumerate(clustering):
-    if not os.path.exists(f'Exported/{LOG}/{df.index[-1]}'):
-        os.mkdir(f'Exported/{LOG}/{df.index[-1]}')
-    xes_exporter.apply(cluster, f'Exported/{LOG}/{df.index[-1]}/cluster_{index}_{df.index[-1]}.xes',
-                       parameters=parameters)
-    net, im, fm = inductive_miner.apply(cluster)
-    gviz = pn_visualizer.apply(net, im, fm)
-    # pn_visualizer.matplotlib_view(gviz)
-    pn_visualizer.save(gviz, f"Exported/{LOG}/{df.index[-1]}/cluster_{index}_{df.index[-1]}.png")
-"""
