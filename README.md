@@ -1,10 +1,10 @@
 # Hybrid Trace Clustering
 
-This is the implementation of the master thesis conducted at Utrecht University in the fulfilment of the requirements Master of Science in Business Informatics. Master thesis can be reached at [Utrecht University thesis repository](/https://dspace.library.uu.nl/handle/1874/401960)
+This is the implementation of the master thesis conducted at Utrecht University in the fulfilment of the requirements Master of Science in Business Informatics. Master thesis can be reached at [Utrecht University thesis repository](https://dspace.library.uu.nl/handle/1874/401960)
 
 Hybrid trace clustering is a new approach to cluster traces (process instances) in order to derive more comprehensible models from an event log. Hybrid approach employs both similarity-based and model-driven methods to divide the original event log into homogeneous sub-logs.
 
-The implementation is based on [PM4PY](/http://pm4py.org/), a python library that supports (state-of-the-art) process mining algorithms in python. This implementation is also compatible with version 2.2.1 of PM4PY. Use the following command to install required dependencies.
+The implementation is based on [PM4PY](http://pm4py.org/), a python library that supports (state-of-the-art) process mining algorithms in python. This implementation is also compatible with version 2.2.1 of PM4PY. Use the following command to install required dependencies.
 
 ```
 pip3 install -r requirements.txt
