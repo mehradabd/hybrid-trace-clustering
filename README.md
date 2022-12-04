@@ -1,6 +1,6 @@
 # Hybrid Trace Clustering
 
-This is the implementation of the master thesis conducted at Utrecht University in the fulfilment of the requirements Master of Science in Business Informatics. Master thesis can be reached at [Utrecht University thesis repository](https://dspace.library.uu.nl/handle/1874/401960)
+This is the implementation of the master thesis conducted at Utrecht University in the fulfilment of the requirements Master of Science in Business Informatics. Master thesis can be reached at [Utrecht University thesis repository](https://studenttheses.uu.nl/handle/20.500.12932/39160)
 
 Hybrid trace clustering is a new approach to cluster traces (process instances) in order to derive more comprehensible models from an event log. Hybrid approach employs both similarity-based and model-driven methods to divide the original event log into homogeneous sub-logs.
 
